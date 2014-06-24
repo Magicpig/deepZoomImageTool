@@ -2,6 +2,7 @@
  * Created by magicpig on 6/18/14.
  */
 var images = require("images");
+images.setLimit(30000, 30000)
 var async = require("async");
 var fs = require("fs");
 /**
@@ -18,9 +19,19 @@ function DeepZoom(imageUrl, tileSize, overLap) {
     this.tileSize = 256;
     this.sourcePath = "";
     this.overLap = 1;
+    this.quality = 100;
+
     if (imageUrl && typeof imageUrl == "string") {
-        this.sourceImage = images(imageUrl);
+        if (fs.existsSync(imageUrl)) {
+            this.sourceImage = images(imageUrl);
+        } else {
+            return false;
+        }
     }
+    else {
+        return false;
+    }
+
     if (tileSize) {
         this.tileSize = tileSize;
     }
@@ -29,7 +40,10 @@ function DeepZoom(imageUrl, tileSize, overLap) {
     }
     this.width = this.sourceImage.width();
     this.height = this.sourceImage.height();
-
+}
+DeepZoom.prototype.setOption = function (key, value) {
+    this[key] = value;
+    console.log(this[key]);
 }
 /**
  * 获取图片需要多少层级深
@@ -45,7 +59,9 @@ DeepZoom.prototype.getMaximumLevel = function (width, height) {
  * @constructor
  */
 DeepZoom.prototype.Make = function (sourcePath) {
-
+    if (!fs.existsSync(this.Url)) {
+        return false;
+    }
     var _self = this;
     _self.sourcePath = sourcePath;
     _self.mkdir(sourcePath);
@@ -198,45 +214,46 @@ DeepZoom.prototype.getPosition = function (rows, column, overLap, tileSize, tota
  */
 DeepZoom.prototype.MakeThumbImages = function (callback) {
     var list = this.computeLevels(this.width, this.height, this.tileSize);
-    async.mapLimit(list, 1, this.DumpImages, function (err, results) {
+    var _self = this;
+    /**
+     * 逐个生成缩略图
+     * @param data
+     * @param callback
+     * @returns {boolean}
+     * @constructor
+     */
+    async.mapLimit(list, 1, function (data, callback) {//直接写在这里，闭包来访问this
+        if (data.width == data.sourceWidth && data.height == data.sourceHeight) {
+            callback(null)
+            return true;
+        }
+        var width = data.sourceWidth
+        var height = data.sourceHeight;
+        var toWidth = data.width;
+        var toHeight = data.height;
+        var newWidth = 0;
+        var newHeight = 0;
+        if (width != 0 && height != 0 && toWidth != 0 && toHeight != 0) {
+            var xscale = width / toWidth;
+            var yscale = height / toHeight;
+
+            if (yscale > xscale) {
+                newWidth = Math.round(width * (1 / yscale));
+                newHeight = Math.round(height * (1 / yscale));
+            }
+            else {
+                newWidth = Math.round(width * (1 / xscale));
+                newHeight = Math.round(height * (1 / xscale));
+            }
+            _self.sourceImage.size(newWidth, newHeight).save(data.sourcePath + "/" + data.level + '.jpeg');
+            callback(null);
+            return true;
+        }
+        callback(null);
+        return false;
+    }, function (err, results) {
         callback();
     });
-}
-/**
- * 逐个生成缩略图
- * @param data
- * @param callback
- * @returns {boolean}
- * @constructor
- */
-DeepZoom.prototype.DumpImages = function (data, callback) {
-    if (data.width == data.sourceWidth && data.height == data.sourceHeight) {
-        callback(null)
-        return true;
-    }
-    var width = data.sourceWidth
-    var height = data.sourceHeight;
-    var toWidth = data.width;
-    var toHeight = data.height;
-    var newWidth = newHeight = 0;
-    if (width != 0 && height != 0 && toWidth != 0 && toHeight != 0) {
-        var xscale = width / toWidth;
-        var yscale = height / toHeight;
-
-        if (yscale > xscale) {
-            newWidth = Math.round(width * (1 / yscale));
-            newHeight = Math.round(height * (1 / yscale));
-        }
-        else {
-            newWidth = Math.round(width * (1 / xscale));
-            newHeight = Math.round(height * (1 / xscale));
-        }
-        data.source.size(newWidth, newHeight).save(data.sourcePath + "/" + data.level + '.jpeg');
-        callback(null);
-        return true;
-    }
-    callback(null);
-    return false;
 }
 /**
  * 获取图片需要缩放多少次，且每一层切分多少块
@@ -261,11 +278,9 @@ DeepZoom.prototype.computeLevels = function (width, height, tileSize) {
             rows: rows,
             sourceWidth: this.width,
             sourceHeight: this.height,
-            source: this.sourceImage,
             level: level,
             sourcePath: this.sourcePath
         })
-        // compute dimensions of next level
         width = Math.ceil(width / 2)
         height = Math.ceil(height / 2)
     }

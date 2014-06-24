@@ -5,5 +5,6 @@ var deepZoom = require("./DeepZoom.js").DeepZoom;
 
 console.time("process");
 var dz = new deepZoom("4.jpg");
-dz.Make("source4");
+dz.setOption("quality", 10);
+console.log(dz.Make("source4"));
 console.timeEnd("process");
